@@ -94,9 +94,11 @@ class ALNS:
                     if best_sol.cost > candidate.cost:
                         best_sol = candidate
 
-                iteration_costs.append(current_sol.cost)
-                best_costs.append(best_sol.cost)
+                    iteration_costs.append(current_sol.cost)
+                    best_costs.append(best_sol.cost)
 
+                # FIXME n.teterin:
+                # runtime measurement is broken for some reason
                 elapsed += timer.duration
                 if elapsed > max_runtime:
                     logger.info("max_runtime exceeded, stopping...")

@@ -12,6 +12,36 @@ logger = get_logger(__name__)
 SolutionConstructor = Callable[[cvrp.Problem], cvrp.Solution]
 
 
+def random_builder(p: cvrp.Problem) -> cvrp.Solution:
+    visited = {0}
+    unvisited = set(range(p.dim)) - visited
+    routes, demands = [], []
+
+    while unvisited:
+        c, *_ = unvisited
+        route = [c]
+        demand = p.demands[c]
+
+        while unvisited:
+            c, *_ = unvisited
+            c_demand = p.demands[c]
+
+            if c_demand + demand > p.capacity:
+                break
+
+            route.append(c)
+            unvisited.remove(c)
+            demand += c_demand
+
+        routes.append(route)
+        demands.append(demand)
+
+    return cvrp.Solution(
+        routes=routes,
+        cost=p.solution_cost(routes),
+    )
+
+
 def neighbours(customer: int, d: cvrp.DistanceMatrix) -> np.ndarray:
     locations = np.argsort(d[customer])
     return locations[locations != 0]
@@ -19,8 +49,8 @@ def neighbours(customer: int, d: cvrp.DistanceMatrix) -> np.ndarray:
 
 def nearest_neighbour_builder(p: cvrp.Problem) -> cvrp.Solution:
     seeds = deque(fps_seed(p.distances, p.min_vehicles))
-    visited = set(seeds) & {0}
-    unvisited = set(x for x in range(1, p.dim) if x not in visited)
+    visited = set(seeds) | {0}
+    unvisited = set(range(p.dim)) - visited
     routes, demands = [], []
 
     while unvisited:
