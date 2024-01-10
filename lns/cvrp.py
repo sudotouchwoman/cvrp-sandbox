@@ -2,6 +2,12 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Mapping, Optional, Sequence, Set, Tuple
 
+import numpy as np
+
+from . import get_logger
+
+
+logger = get_logger(__name__)
 
 DistanceMatrix = Mapping[Tuple[int, int], float]
 Route = Sequence[int]
@@ -28,6 +34,10 @@ class Solution:
 
         raise ValueError(f"customer {customer} missing in solution")
 
+    @classmethod
+    def from_vrplib(cls, sol):
+        return cls(**sol)
+
 
 @dataclass
 class Problem:
@@ -35,11 +45,12 @@ class Problem:
     distances: DistanceMatrix
     demands: Demands
     capacity: float
-    max_vehicles: int
+    min_vehicles: int
+    name: str = ""
 
     @property
     def dim(self) -> int:
-        return len(self.customers)
+        return len(self.distances)
 
     @property
     def depot(self):
@@ -57,6 +68,21 @@ class Problem:
     def route_load(self, route: Route):
         return sum(self.demands[c] for c in route)
 
+    @classmethod
+    def from_vrplib(cls, data):
+        # TODO n.teterin: support problems without
+        # explicit estimates on truck count
+        _, _, k = data["name"].split("-")
+        k = int(k.removeprefix("k"))
+        return cls(
+            customers=data.get("node_coord", []),
+            distances=data.get("edge_weight", np.empty(0)),
+            demands=data.get("demand", []),
+            capacity=data.get("capacity", np.inf),
+            min_vehicles=k,
+            name=data["name"] + " " + data["comment"],
+        )
+
 
 def route_cost(route: Route, distance_matrix: DistanceMatrix):
     i, j = route[0], route[-1]
@@ -66,6 +92,20 @@ def route_cost(route: Route, distance_matrix: DistanceMatrix):
 
 def solution_cost(routes: Routes, distance_matrix: DistanceMatrix):
     return sum(route_cost(r, distance_matrix) for r in routes)
+
+
+def check_solution(p: Problem, solution: Solution) -> bool:
+    is_ok = True
+
+    for i, route in enumerate(solution.routes):
+        demand = sum(p.demands[i] for i in route)
+        if demand > p.capacity:
+            logger.warning(
+                f"route {i} demand exceeds capacity: {demand} > {p.capacity}"
+            )
+            is_ok = False
+
+    return is_ok
 
 
 # partial solution is what is obtained by destroy operators

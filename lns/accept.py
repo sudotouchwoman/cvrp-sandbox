@@ -17,7 +17,7 @@ class AcceptanceCriterion(Protocol):
 DecayMethod = Union[Literal["linear"], Literal["exponential"]]
 
 
-def __decay(p: float, step: float, method: DecayMethod):
+def _decay(p: float, step: float, method: DecayMethod):
     if method == "linear":
         return p - step
 
@@ -63,7 +63,7 @@ class RandomAccept:
         if not res:
             res = rng.random() <= self.proba
 
-        decayed = __decay(self.proba, self.step, self.method)
+        decayed = _decay(self.proba, self.step, self.method)
         self.proba = max(self.end_proba, decayed)
         return res
 
@@ -86,7 +86,7 @@ class SimulatedAnnealing:
 
         self.temperature = max(
             self.temperature_end,
-            __decay(self.temperature, self.step, self.method),
+            _decay(self.temperature, self.step, self.method),
         )
 
         return rng.random() <= proba

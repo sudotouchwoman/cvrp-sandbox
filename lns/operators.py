@@ -5,7 +5,10 @@ from typing import Callable, Optional, Tuple
 
 import numpy as np
 
-from . import cvrp
+from . import cvrp, get_logger
+
+
+logger = get_logger(__name__)
 
 DestroyOperator = Callable[[cvrp.Solution], cvrp.PartialSolution]
 RepairOperator = Callable[[cvrp.PartialSolution], Optional[cvrp.Solution]]
@@ -15,8 +18,10 @@ RepairOperator = Callable[[cvrp.PartialSolution], Optional[cvrp.Solution]]
 def remove_unassigned(sol: cvrp.Solution, unassigned: cvrp.Unassigned):
     # helper function that creates partial solution from
     # a given complete solution and set of customers to drop
+    routes = ([c for c in route if c not in unassigned] for route in sol.routes)
+    # remember to remove empty routes, if any
     return cvrp.PartialSolution(
-        routes=[[c for c in route if c not in unassigned] for route in sol.routes],
+        routes=[r for r in routes if r],
         unassigned=unassigned,
     )
 
@@ -42,7 +47,7 @@ class RandomRemove:
     def __call__(self, sol: cvrp.Solution):
         n = self.cfg.nodes_to_remove()
         dim = self.cfg.dim
-        removed_customers = set(self.rng.choice(dim, size=n, replace=False))
+        removed_customers = set(self.cfg.rng.choice(dim, size=n, replace=False))
         return remove_unassigned(sol, removed_customers)
 
 
@@ -50,7 +55,7 @@ class RandomRemove:
 class WorstRemove:
     # removes points with highest cost (hoping that repair
     # operators will find a better place to emplace them)
-    route_cost_hook: Callable[[cvrp.Route], float]
+    route_cost: Callable[[cvrp.Route], float]
     cfg: BasicDestroyConfig
 
     def __call__(self, sol: cvrp.Solution):
@@ -58,11 +63,11 @@ class WorstRemove:
         savings = np.empty(dim, dtype=float)
 
         for route in sol.routes:
-            route_cost = self.route_cost_hook(route)
+            route_cost = self.route_cost(route)
             route_copy = np.asarray(route)
             for customer in route:
                 r = route_copy[route_copy != customer]
-                savings[customer] = route_cost - self.route_cost_hook(r)
+                savings[customer] = route_cost - self.route_cost(r)
 
         n = self.cfg.nodes_to_remove()
         worst_nodes = -savings[1:].argsort()[:n]
@@ -95,17 +100,23 @@ class GreedyRepair:
         # for each unassigned route, find best
         # position to insert
         unassigned = np.fromiter(
-            partial_sol.unassigned, count=len(partial_sol.unassigned)
+            partial_sol.unassigned,
+            count=len(partial_sol.unassigned),
+            dtype=np.int32,
         )
         self.cfg.rng.shuffle(unassigned)
         routes = partial_sol.routes
+        # shorthands
+        min_vehicles = self.cfg.problem.min_vehicles
+        assign = len(unassigned)
 
-        for customer in unassigned:
+        for i, customer in enumerate(unassigned):
             route, idx = self.best_insert(customer, routes)
-            if route is None:
+            if route is None or len(routes) + assign - i <= min_vehicles:
                 # capacity constraints can't be satisfied
                 # with current number of vehicles,
                 # create a new route with single customer
+                # OR insufficient number of vahicles, need to add one
                 routes.append([customer])
                 continue
 
@@ -122,7 +133,7 @@ class GreedyRepair:
         routes: cvrp.Routes,
     ) -> Tuple[Optional[cvrp.Route], Optional[int]]:
         # searches for the best position to insert
-        route_loads = tuple(self.cfg.problem.route_cost(r) for r in routes)
+        route_loads = tuple(self.cfg.problem.route_load(r) for r in routes)
         demand = self.cfg.problem.demands[customer]
         capacity = self.cfg.problem.capacity
         distances = self.cfg.problem.distances
