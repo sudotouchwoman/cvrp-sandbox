@@ -67,7 +67,8 @@ class WorstRemove:
             route_copy = np.asarray(route)
             for customer in route:
                 r = route_copy[route_copy != customer]
-                savings[customer] = route_cost - self.route_cost(r)
+                saving = route_cost - 0 if len(r) == 0 else self.route_cost(r)
+                savings[customer] = saving
 
         n = self.cfg.nodes_to_remove()
         worst_nodes = -savings[1:].argsort()[:n]

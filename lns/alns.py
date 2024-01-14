@@ -57,6 +57,8 @@ class ALNS:
         max_runtime: float = 60,
         seed: int = 42,
         verbose: bool = False,
+        handle_interrupts: bool = True,
+        track: bool = False,
     ) -> TracedSolution:
         # to make `iterate` reentrant, create method-scoped rng
         rng = np.random.default_rng(seed=seed)
@@ -69,7 +71,7 @@ class ALNS:
         try:
             for i in progress.track(
                 takewhile(lambda x: not max_iter or x < max_iter, count()),
-                disable=not verbose,
+                disable=not track,
                 description="Running ALNS CVRP optimization",
                 total=max_iter,
             ):
@@ -80,7 +82,9 @@ class ALNS:
                         # failed to reconstruct solution from partial solution
                         # after destroy operator: usually this means we are
                         # out of vehicles, I guess?
-                        logger.warning(f"it: {i}, failed to repair solution, skipping iteration")
+                        logger.warning(
+                            f"it: {i}, failed to repair solution, skipping iteration"
+                        )
                         continue
 
                     if self.accept(
@@ -97,14 +101,19 @@ class ALNS:
                     iteration_costs.append(current_sol.cost)
                     best_costs.append(best_sol.cost)
 
-                # FIXME n.teterin:
-                # runtime measurement is broken for some reason
                 elapsed += timer.duration
+                if verbose and i % 10_000 == 0:
+                    logger.debug(
+                        f"elapsed: [{elapsed:.2f}/{max_runtime}]: best = {best_costs[-1]:.3f}"
+                    )
                 if elapsed > max_runtime:
                     logger.info("max_runtime exceeded, stopping...")
                     break
 
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as e:
+            if not handle_interrupts:
+                raise e
+
             logger.info("interrupted, return best solution so far...")
 
         return TracedSolution(

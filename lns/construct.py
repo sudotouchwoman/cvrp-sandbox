@@ -81,14 +81,6 @@ def nearest_neighbour_builder(p: cvrp.Problem) -> cvrp.Solution:
         if 0 in route:
             route.remove(0)
 
-    # for customer, _ in enumerate(p.customers):
-    #     if customer == 0:
-    #         continue
-
-    #     if not any(customer in r for r in routes):
-    #         logger.error(f"{customer} not inserted after repair!")
-    #         raise RuntimeError("boo!")
-
     return cvrp.Solution(
         routes=routes,
         cost=p.solution_cost(routes),

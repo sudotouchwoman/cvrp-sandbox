@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from itertools import pairwise
-from typing import Mapping, Optional, Sequence, Set, Tuple
+from typing import Mapping, Sequence, Set, Tuple
 
 import numpy as np
 

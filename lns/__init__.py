@@ -6,9 +6,9 @@ LOG_FMT = "[%(asctime)s]::[%(name)s] %(levelname)s - %(message)s"
 LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(level=level)
 
     if not logger.hasHandlers():
         logger.handlers.clear()
