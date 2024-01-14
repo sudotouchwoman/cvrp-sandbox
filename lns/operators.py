@@ -5,6 +5,8 @@ from typing import Callable, Optional, Tuple
 
 import numpy as np
 
+from lns import construct
+
 from . import cvrp, get_logger
 
 
@@ -28,7 +30,7 @@ def remove_unassigned(sol: cvrp.Solution, unassigned: cvrp.Unassigned):
 
 @dataclass(frozen=True)
 class BasicDestroyConfig:
-    dim: int
+    problem: cvrp.Problem
     bounds: Tuple[int, int]
     rng: np.random.Generator = field(
         default_factory=partial(np.random.default_rng, seed=42)
@@ -46,7 +48,7 @@ class RandomRemove:
 
     def __call__(self, sol: cvrp.Solution):
         n = self.cfg.nodes_to_remove()
-        dim = self.cfg.dim
+        dim = self.cfg.problem.dim
         removed_customers = set(self.cfg.rng.choice(dim, size=n, replace=False))
         return remove_unassigned(sol, removed_customers)
 
@@ -59,7 +61,7 @@ class WorstRemove:
     cfg: BasicDestroyConfig
 
     def __call__(self, sol: cvrp.Solution):
-        dim = self.cfg.dim
+        dim = self.cfg.problem.dim
         savings = np.empty(dim, dtype=float)
 
         for route in sol.routes:
@@ -73,6 +75,55 @@ class WorstRemove:
         n = self.cfg.nodes_to_remove()
         worst_nodes = -savings[1:].argsort()[:n]
         return remove_unassigned(sol, set(worst_nodes))
+
+
+@dataclass(frozen=True)
+class SubstringRemoval:
+    max_substring_removals: int
+    max_string_size: int
+    cfg: BasicDestroyConfig
+
+    def __call__(self, sol: cvrp.Solution):
+        avg_route_size = int(np.mean([len(r) for r in sol.routes]))
+        max_string_size = max(self.max_string_size, avg_route_size)
+        max_substring_removals = min(len(sol.routes), self.max_substring_removals)
+
+        destroyed_routes = set()
+        unassigned = set()
+        center = self.cfg.rng.integers(1, self.cfg.problem.dim)
+        distances = self.cfg.problem.distances
+
+        for customer in construct.neighbours(center, distances):
+            if len(destroyed_routes) >= max_substring_removals:
+                break
+
+            if customer in unassigned:
+                continue
+
+            route = sol.find_route(customer)
+            route_idx = sol.routes.index(route)
+
+            if route_idx in destroyed_routes:
+                continue
+
+            removed = self.remove_substring(route, customer, max_string_size)
+            unassigned.update(removed)
+            destroyed_routes.add(route_idx)
+
+        return remove_unassigned(sol, unassigned)
+
+    def remove_substring(
+        self,
+        route: cvrp.Route,
+        customer: int,
+        max_string_size: int,
+    ) -> cvrp.Unassigned:
+        size = self.cfg.rng.integers(1, min(len(route), max_string_size) + 1)
+        start = route.index(customer) - self.cfg.rng.integers(0, size)
+
+        indices = np.arange(start, start + size) % len(route)
+        removed = {route[i] for i in indices}
+        return removed
 
 
 @dataclass(frozen=True)
