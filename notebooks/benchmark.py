@@ -113,12 +113,67 @@ def benchmark_model(
     return result
 
 
-def alns_factory(seed: int = 10):
+def better_alns_factory(
+    seed: int = 10, max_iterations: int = 10_000, max_runtime: float = 60
+):
     # ensure reentrance
     rng = np.random.default_rng(seed=seed)
 
     def solve(p: cvrp.Problem, initial: cvrp.Solution):
-        # TODO n.teterin: percent-like API
+        accept_criterion = lns.accept.SimulatedAnnealing.fit(
+            initial.cost,
+            worse=0.5,
+            accept_proba=0.1,
+            num_iters=max_iterations,
+            method="exponential",
+        )
+
+        cfg = lns.operators.BasicDestroyConfig(
+            problem=p,
+            bounds=[min(5, 0.1 * p.dim), min(50, 0.5 * p.dim)],
+            rng=rng,
+        )
+
+        destroy_operators = [
+            lns.operators.RandomRemove(cfg),
+            lns.operators.SubstringRemoval(
+                max_substring_removals=2,
+                max_string_size=12,
+                cfg=cfg,
+            ),
+        ]
+
+        repair_operators = [
+            lns.operators.GreedyRepair(
+                lns.operators.BasicRepairConfig(
+                    problem=p,
+                    rng=rng,
+                )
+            )
+        ]
+
+        solver = lns.alns.ALNS(
+            accept=accept_criterion,
+            destroy_operators=destroy_operators,
+            repair_operators=repair_operators,
+        )
+
+        return solver.iterate(
+            initial,
+            max_iter=max_iterations,
+            max_runtime=max_runtime,
+            verbose=True,
+            handle_interrupts=False,
+        )
+
+    return solve
+
+
+def alns_factory(seed: int = 10, max_iterations: int = 10_000, max_runtime: float = 60):
+    # ensure reentrance
+    rng = np.random.default_rng(seed=seed)
+
+    def solve(p: cvrp.Problem, initial: cvrp.Solution):
         bounds = [max(1, int(0.05 * p.dim)), max(3, int(0.4 * p.dim))]
 
         accept_criterion = lns.accept.RandomAccept(
@@ -131,7 +186,7 @@ def alns_factory(seed: int = 10):
         destroy_operators = [
             lns.operators.RandomRemove(
                 lns.operators.BasicDestroyConfig(
-                    dim=p.dim,
+                    problem=p,
                     bounds=bounds,
                     rng=rng,
                 )
@@ -155,8 +210,8 @@ def alns_factory(seed: int = 10):
 
         return solver.iterate(
             initial,
-            max_iter=10_000,
-            max_runtime=60,
+            max_iter=max_iterations,
+            max_runtime=max_runtime,
             verbose=False,
             handle_interrupts=False,
         )
@@ -194,7 +249,7 @@ def main():
                 name,
                 p,
                 opt,
-                alns_factory(),
+                better_alns_factory(max_iterations=100_000, max_runtime=300),
                 lns.construct.nearest_neighbour_builder,
             )
             for name, p, opt in map(
